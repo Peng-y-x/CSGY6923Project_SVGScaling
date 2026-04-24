@@ -96,13 +96,14 @@ Run in this order:
 ```bash
 python scripts/run_preprocess.py --config configs/data.yaml
 ```
-This step enforces `targets.min_train_tokens_estimate` from config. If train token estimate is below target, preprocessing exits with an error so you can increase sampled data.
+This step records estimated token counts, but does not hard-fail on token target.
 This step also writes `manifest.json` and reuses existing processed outputs when the config hash matches (use `--force` to rebuild).
 
 2. Tokenizer training + encoding
 ```bash
 python scripts/run_tokenizer.py --config configs/data.yaml
 ```
+This step enforces `targets.min_train_tokens_estimate` using real tokenizer token totals on the train split.
 
 2.1 Push tokenizer artifacts to HF model repo (optional but recommended)
 ```bash

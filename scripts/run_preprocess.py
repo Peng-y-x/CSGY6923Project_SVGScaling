@@ -406,13 +406,6 @@ def main() -> None:
     with (output_dir / "examples_manifest.json").open("w", encoding="utf-8") as f:
         json.dump(examples_manifest, f, ensure_ascii=False, indent=2)
 
-    if min_train_tokens_estimate > 0 and summary["train_token_est_total"] < min_train_tokens_estimate:
-        raise RuntimeError(
-            "Train token estimate below configured target: "
-            f"{summary['train_token_est_total']} < {min_train_tokens_estimate}. "
-            "Increase source data (e.g., max_samples for large datasets) and rerun."
-        )
-
     print("[7/8] Optional push to HF hub...")
     push_cfg = config.get("hf_push", {})
     if bool(push_cfg.get("enabled", False)):
