@@ -25,6 +25,7 @@ from src.data.validate_svg import (
     validate_render,
     validate_xml,
 )
+from src.utils.hf_auth import ensure_hf_token_from_colab
 
 PIPELINE_VERSION = "preprocess-v2"
 
@@ -185,6 +186,9 @@ def _load_manifest(path: Path) -> dict[str, Any] | None:
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
+    loaded = ensure_hf_token_from_colab(config)
+    if loaded:
+        print("[auth] Loaded HF token from Colab key.")
 
     output_dir = Path(config["output"]["dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -443,4 +447,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

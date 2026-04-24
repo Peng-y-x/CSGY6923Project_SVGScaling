@@ -12,3 +12,6 @@ outputs/
 
 # Notebooks
 .ipynb_checkpoints/
+
+# Tokens
+secrets.txt

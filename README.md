@@ -44,6 +44,35 @@ If you use Colab Pro:
 - Install dependencies
 - Authenticate Hugging Face when pushing/loading datasets or models
 
+Recommended startup commands for every fresh Colab session:
+
+```bash
+# 1) System packages required by CairoSVG render checks
+apt-get update -y
+apt-get install -y libcairo2 libcairo2-dev libffi-dev
+
+# 2) Python dependencies
+pip install -U pip
+pip install -r requirements.txt
+
+# 3) (Optional) login if you need HF push
+huggingface-cli login
+
+# 4) Quick sanity check for render validation
+python - <<'PY'
+from src.data.validate_svg import validate_render
+svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="6"/></svg>'
+ok, err = validate_render(svg)
+print("render_check_ok:", ok)
+print("render_check_err:", err)
+PY
+```
+
+If your Hugging Face token is stored in Colab Keys, scripts can auto-load it.
+Default config:
+- `hf_auth.auto_load_colab_key: true`
+- `hf_auth.colab_key_name: HF_TOKEN`
+
 ## 4. Data Strategy (Recommended)
 
 Use Hugging Face Datasets as the storage backend for cleaned/split datasets.
@@ -73,6 +102,16 @@ This step also writes `manifest.json` and reuses existing processed outputs when
 2. Tokenizer training + encoding
 ```bash
 python scripts/run_tokenizer.py --config configs/data.yaml
+```
+
+2.1 Push tokenizer artifacts to HF model repo (optional but recommended)
+```bash
+python scripts/push_tokenizer_to_hf.py --config configs/data.yaml
+```
+
+2.2 Push tokenized dataset to HF dataset repo (for direct training input_ids)
+```bash
+python scripts/push_tokenized_dataset_to_hf.py --config configs/data.yaml
 ```
 
 3. Part 2: smallest-model LR sweep (standard parameterization)
@@ -147,6 +186,9 @@ Implemented now:
 - BPE tokenizer training
 - split encoding
 - vocab size + token totals + sequence length histograms
+3. HF publishing helpers:
+- `scripts/push_tokenizer_to_hf.py`
+- `scripts/push_tokenized_dataset_to_hf.py`
 
 Still pending:
 1. model training pipeline in `src/train/*` + `scripts/run_train.py`
