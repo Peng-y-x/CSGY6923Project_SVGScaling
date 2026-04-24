@@ -1,0 +1,75 @@
+seed: 42
+
+# Optional: set a dedicated local cache dir for HF datasets
+cache_dir: data/cache/hf
+
+preprocess:
+  # Reuse processed outputs if manifest hash matches current config.
+  reuse_processed_if_match: true
+  # Force rebuild ignores manifest reuse.
+  force_rebuild: false
+
+sources:
+  - name: starvector/svg-icons-simple
+    split: train
+    text_field: Svg
+    filename_field: Filename
+  - name: starvector/svg-emoji-simple
+    split: train
+    text_field: Svg
+    filename_field: Filename
+  # Add large simplified SVG sources with capped sampling to exceed 100M train tokens.
+  - name: starvector/svg-stack-simple
+    split: train
+    text_field: Svg
+    filename_field: Filename
+    max_samples: 220000
+  - name: starvector/svg-fonts-simple
+    split: train
+    text_field: Svg
+    filename_field: Filename
+    max_samples: 140000
+
+cleaning:
+  strip_comments: true
+  strip_metadata: true
+  normalize_precision: true
+  precision: 1
+  canonicalize_attributes: false
+
+filters:
+  min_chars: 50
+  max_chars: 12000
+  max_tokens_estimate: 2048
+
+splits:
+  train: 0.98
+  validation: 0.01
+  test: 0.01
+  by_file: true
+  group_key: file_key
+
+deduplication:
+  by_svg_hash: true
+
+validation:
+  render_check: true
+
+output:
+  dir: data/processed/v1-clean-rawsplit
+
+targets:
+  min_train_tokens_estimate: 100000000
+
+tokenization:
+  output_dir: data/processed/v1-clean-rawsplit/tokenizer
+  vocab_size: 4096
+  min_frequency: 2
+  max_length: 2048
+  write_token_ids: false
+  special_tokens: ["<pad>", "<bos>", "<eos>", "<unk>"]
+
+hf_push:
+  enabled: true
+  repo_id: Zala0429/svg-scaling-v1-clean
+  private: false
