@@ -27,7 +27,7 @@ from src.data.validate_svg import (
 )
 from src.utils.hf_auth import ensure_hf_token_from_colab
 
-PIPELINE_VERSION = "preprocess-v2"
+PIPELINE_VERSION = "preprocess-v3"
 
 
 def parse_args() -> argparse.Namespace:
@@ -181,6 +181,30 @@ def _load_manifest(path: Path) -> dict[str, Any] | None:
             return json.load(f)
     except Exception:
         return None
+
+
+def _upload_analysis_files_to_hf(
+    *,
+    repo_id: str,
+    files: list[Path],
+) -> None:
+    try:
+        from huggingface_hub import HfApi
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            "Missing dependency: huggingface_hub. Install with `pip install huggingface_hub`."
+        ) from exc
+
+    api = HfApi()
+    for file_path in files:
+        if not file_path.exists():
+            continue
+        api.upload_file(
+            path_or_fileobj=str(file_path),
+            path_in_repo=f"analysis/{file_path.name}",
+            repo_id=repo_id,
+            repo_type="dataset",
+        )
 
 
 def main() -> None:
@@ -433,6 +457,18 @@ def main() -> None:
     }
     with manifest_path.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
+
+    push_cfg = config.get("hf_push", {})
+    if bool(push_cfg.get("enabled", False)) and bool(
+        push_cfg.get("upload_analysis_json", True)
+    ):
+        analysis_files = [
+            output_dir / "stats.json",
+            output_dir / "examples_manifest.json",
+            output_dir / "manifest.json",
+        ]
+        _upload_analysis_files_to_hf(repo_id=push_cfg["repo_id"], files=analysis_files)
+        print("Uploaded analysis json files to hub under analysis/.")
 
     print("Done.")
     print(f"Output directory: {output_dir}")

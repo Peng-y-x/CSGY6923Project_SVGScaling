@@ -68,8 +68,8 @@ targets:
   min_train_tokens_estimate: 100000000
 
 tokenization:
-  output_dir: data/processed/v1-clean-rawsplit/tokenizer
-  vocab_size: 4096
+  output_dir: data/processed/v1-clean-rawsplit/tokenizer_1024
+  vocab_size: 1024
   min_frequency: 2
   max_length: 2048
   write_token_ids: true
@@ -83,10 +83,10 @@ hf_push:
 
 hf_tokenizer_push:
   enabled: false
-  repo_id: Zala0429/svg-scaling-tokenizer-v1
+  repo_id: Zala0429/svg-scaling-tokenizer-v1-vocab1024
   private: false
 
 hf_tokenized_push:
   enabled: false
-  repo_id: Zala0429/svg-scaling-v2-tokenized
+  repo_id: Zala0429/svg-scaling-v2-tokenized-vocab1024
   private: false
