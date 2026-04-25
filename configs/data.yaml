@@ -18,21 +18,23 @@ sources:
     split: train
     text_field: Svg
     filename_field: Filename
+    max_samples: 28000
   - name: starvector/svg-emoji-simple
     split: train
     text_field: Svg
     filename_field: Filename
+    max_samples: 1500
   # Add large simplified SVG sources with capped sampling to exceed 100M train tokens.
   - name: starvector/svg-stack-simple
     split: train
     text_field: Svg
     filename_field: Filename
-    max_samples: 220000
+    max_samples: 77000
   - name: starvector/svg-fonts-simple
     split: train
     text_field: Svg
     filename_field: Filename
-    max_samples: 140000
+    max_samples: 49000
 
 cleaning:
   strip_comments: true

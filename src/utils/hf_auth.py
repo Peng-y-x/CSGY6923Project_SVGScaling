@@ -8,14 +8,10 @@ def ensure_hf_token_from_colab(config: dict[str, Any] | None = None) -> bool:
     """Load HF token from Colab userdata into env vars if available.
 
     Priority:
-    1) Existing env vars (`HF_TOKEN`, `HUGGINGFACE_HUB_TOKEN`, `HF_HUB_TOKEN`)
+    1) Existing env var (`HF_TOKEN`)
     2) Colab userdata key (default: `HF_TOKEN`, configurable)
     """
-    if (
-        os.getenv("HF_TOKEN")
-        or os.getenv("HUGGINGFACE_HUB_TOKEN")
-        or os.getenv("HF_HUB_TOKEN")
-    ):
+    if os.getenv("HF_TOKEN"):
         return True
 
     cfg = config or {}
@@ -38,7 +34,4 @@ def ensure_hf_token_from_colab(config: dict[str, Any] | None = None) -> bool:
         return False
 
     os.environ["HF_TOKEN"] = token
-    os.environ["HUGGINGFACE_HUB_TOKEN"] = token
-    os.environ["HF_HUB_TOKEN"] = token
     return True
-
