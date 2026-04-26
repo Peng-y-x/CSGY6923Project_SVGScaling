@@ -1,0 +1,18 @@
+base_config: configs/mup_tiny.yaml
+run_prefix: tiny_mup_lr
+output_dir: outputs/part3_mup_lr_sweep
+drive_output_dir: /content/drive/MyDrive/svg-scaling/part3_mup_lr_sweep
+resume: auto
+
+learning_rates:
+  - 0.00005
+  - 0.0001
+  - 0.0002
+  - 0.0004
+  - 0.0006
+  - 0.001
+  - 0.002
+
+# Optional smoke-test caps. Leave commented for final Part 3 results.
+# max_train_tokens: 20000000
+# max_eval_tokens: 1000000

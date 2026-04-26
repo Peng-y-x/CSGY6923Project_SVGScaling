@@ -407,3 +407,77 @@ class Part2Trainer:
         if self.device.type != "cuda":
             return 0.0
         return float(torch.cuda.max_memory_allocated(self.device) / (1024**3))
+
+
+class Part3MupTrainer(Part2Trainer):
+    def __init__(self, cfg: dict[str, Any]) -> None:
+        from mup import MuAdamW, set_base_shapes
+
+        from src.models.mup_transformer import (
+            MupDecoderOnlyTransformer,
+            MupTransformerConfig,
+            make_mup_base_config,
+        )
+
+        self.cfg = cfg
+        run_cfg = cfg["run"]
+        self.run_name = run_cfg["name"]
+        self.run_dir = Path(run_cfg.get("output_dir", "outputs/part3_mup")) / self.run_name
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.drive_run_dir = None
+        drive_dir = _expand_colab_path(run_cfg.get("drive_output_dir"))
+        if drive_dir is not None:
+            self.drive_run_dir = drive_dir / self.run_name
+
+        seed = int(cfg.get("seed", 42))
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+
+        device_name = run_cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(device_name if torch.cuda.is_available() or device_name == "cpu" else "cpu")
+        self.precision = str(run_cfg.get("precision", "bf16"))
+        self.autocast_dtype = torch.bfloat16 if self.precision == "bf16" else torch.float16
+        self.use_autocast = self.device.type == "cuda" and self.precision in {"bf16", "fp16"}
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.device.type == "cuda" and self.precision == "fp16")
+
+        model_cfg = cfg["model"]
+        self.model_config = MupTransformerConfig(**model_cfg)
+        self.model = MupDecoderOnlyTransformer(self.model_config)
+        base_cfg = make_mup_base_config(self.model_config)
+        delta_cfg = make_mup_base_config(self.model_config, d_model=base_cfg.d_model * 2)
+        base_model = MupDecoderOnlyTransformer(base_cfg)
+        delta_model = MupDecoderOnlyTransformer(delta_cfg)
+        set_base_shapes(self.model, base_model, delta=delta_model)
+        self.model.to(self.device)
+
+        train_cfg = cfg["training"]
+        self.optimizer = MuAdamW(
+            self.model.parameters(),
+            lr=float(train_cfg["learning_rate"]),
+            weight_decay=float(train_cfg.get("weight_decay", 0.1)),
+            betas=tuple(train_cfg.get("betas", [0.9, 0.95])),
+            eps=float(train_cfg.get("eps", 1e-8)),
+        )
+
+        self.train_data = TokenizedSvgDataset(cfg["data"], "train")
+        self.val_data = TokenizedSvgDataset(cfg["data"], "validation")
+
+        total_steps = self._estimate_total_steps()
+        warmup_steps = int(train_cfg.get("warmup_steps", 0))
+        if warmup_steps <= 0:
+            warmup_steps = int(total_steps * float(train_cfg.get("warmup_ratio", 0.02)))
+        self.scheduler = build_cosine_warmup_scheduler(
+            self.optimizer,
+            warmup_steps=warmup_steps,
+            total_steps=total_steps,
+            min_lr_ratio=float(train_cfg.get("min_lr_ratio", 0.1)),
+        )
+
+        self.global_step = 0
+        self.tokens_seen = 0
+        self.next_row_index = 0
+        self.best_val_loss = float("inf")
+        self.started_at = time.time()
