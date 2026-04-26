@@ -29,12 +29,12 @@ sources:
     split: train
     text_field: Svg
     filename_field: Filename
-    max_samples: 86000
+    max_samples: 87000
   - name: starvector/svg-fonts-simple
     split: train
     text_field: Svg
     filename_field: Filename
-    max_samples: 55000
+    max_samples: 56000
 
 cleaning:
   strip_comments: true
