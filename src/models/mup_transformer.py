@@ -46,15 +46,19 @@ class MupCausalSelfAttention(nn.Module):
         k = k.view(bsz, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
         v = v.view(bsz, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
 
-        scores = torch.matmul(q, k.transpose(-2, -1)) / float(self.head_dim)
-        causal_mask = torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool).tril()
-        scores = scores.masked_fill(~causal_mask.view(1, 1, seq_len, seq_len), float("-inf"))
+        attn_mask = torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool).tril()
         if key_padding_mask is not None:
-            scores = scores.masked_fill(~key_padding_mask.view(bsz, 1, 1, seq_len), float("-inf"))
+            attn_mask = attn_mask.view(1, 1, seq_len, seq_len) & key_padding_mask.view(bsz, 1, 1, seq_len)
 
-        attn = F.softmax(scores, dim=-1)
-        attn = self.attn_drop(attn)
-        y = torch.matmul(attn, v)
+        y = F.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=attn_mask,
+            dropout_p=self.attn_drop.p if self.training else 0.0,
+            is_causal=False,
+            scale=1.0 / float(self.head_dim),
+        )
         y = y.transpose(1, 2).contiguous().view(bsz, seq_len, width)
         return self.resid_drop(self.proj(y))
 

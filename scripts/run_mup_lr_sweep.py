@@ -44,6 +44,8 @@ def main() -> None:
         cfg["training"]["learning_rate"] = lr
         cfg["run"]["name"] = f"{sweep_cfg.get('run_prefix', 'tiny_mup_lr')}_{lr:.1e}".replace("+", "")
         cfg["run"]["output_dir"] = str(output_dir)
+        if drive_output_dir:
+            cfg["run"]["drive_output_dir"] = str(drive_output_dir)
         cfg["run"]["resume"] = sweep_cfg.get("resume", "auto")
         if "max_train_tokens" in sweep_cfg:
             cfg["training"]["max_train_tokens"] = int(sweep_cfg["max_train_tokens"])

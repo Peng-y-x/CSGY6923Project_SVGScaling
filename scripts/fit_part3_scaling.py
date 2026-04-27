@@ -28,18 +28,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--drive-output-dir", default=None, help="Optional Drive directory to sync outputs.")
     parser.add_argument("--sp-sweep-json", default="outputs/part2_lr_sweep/sweep_results.json")
     parser.add_argument("--mup-sweep-json", default="outputs/part3_mup_lr_sweep/sweep_results.json")
+    parser.add_argument("--allow-partial", action="store_true", help="Allow analysis with fewer than five size runs.")
     return parser.parse_args()
 
 
-def load_runs(runs_dir: Path) -> list[dict[str, Any]]:
+def load_runs(runs_dir: Path, expected_names: set[str]) -> list[dict[str, Any]]:
     rows = []
     for path in sorted(runs_dir.glob("*/final_metrics.json")):
         with path.open("r", encoding="utf-8") as f:
             row = json.load(f)
+        if str(row.get("run_name", path.parent.name)) not in expected_names:
+            continue
         row["_run_dir"] = str(path.parent)
         rows.append(row)
     rows.sort(key=lambda x: int(x["num_parameters"]))
     return rows
+
+
+def require_expected(rows: list[dict[str, Any]], expected_names: set[str], label: str, allow_partial: bool) -> None:
+    found = {str(row.get("run_name")) for row in rows}
+    missing = sorted(expected_names - found)
+    if missing and not allow_partial:
+        raise RuntimeError(
+            f"{label} is incomplete. Missing final_metrics.json for: {missing}. "
+            "Do not use the Part 3 scaling fit/extrapolation until all five size runs finish."
+        )
+    if len(rows) < 3:
+        raise RuntimeError(f"Need at least 3 {label} runs to fit a power law; found {len(rows)}.")
 
 
 def fit_with_stats(rows: list[dict[str, Any]]) -> tuple[ScalingFit, float]:
@@ -212,12 +227,12 @@ def main() -> None:
         sp_runs_dir = Path(args.fallback_sp_runs_dir)
     mup_runs_dir = Path(args.mup_runs_dir)
 
-    sp_rows = load_runs(sp_runs_dir)
-    mup_rows = load_runs(mup_runs_dir)
-    if len(sp_rows) < 3:
-        raise RuntimeError(f"Need at least 3 SP runs; found {len(sp_rows)} in {sp_runs_dir}")
-    if len(mup_rows) < 3:
-        raise RuntimeError(f"Need at least 3 muP runs; found {len(mup_rows)} in {mup_runs_dir}")
+    sp_expected = {"tiny", "small", "medium", "large", "xl"}
+    mup_expected = {"tiny_mup", "small_mup", "medium_mup", "large_mup", "xl_mup"}
+    sp_rows = load_runs(sp_runs_dir, sp_expected)
+    mup_rows = load_runs(mup_runs_dir, mup_expected)
+    require_expected(sp_rows, sp_expected, "SP baseline", args.allow_partial)
+    require_expected(mup_rows, mup_expected, "muP runs", args.allow_partial)
 
     sp_fit, sp_rmse = fit_with_stats(sp_rows)
     mup_fit, mup_rmse = fit_with_stats(mup_rows)

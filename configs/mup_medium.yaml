@@ -25,7 +25,7 @@ model:
   dropout: 0.0
   pad_token_id: 0
   bias: true
-  base_d_model: 192
+  base_d_model: 96
 
 training:
   learning_rate: 0.0006
