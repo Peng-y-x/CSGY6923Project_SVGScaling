@@ -59,12 +59,14 @@ class TokenizedSvgDataset:
         *,
         start_index: int,
         tokens_per_batch: int,
+        max_padded_tokens_per_batch: int | None = None,
         block_size: int,
         pad_token_id: int,
         max_tokens: int | None = None,
     ) -> Iterator[tuple[int, torch.Tensor, torch.Tensor, torch.Tensor, int]]:
         batch: list[list[int]] = []
         batch_tokens = 0
+        batch_max_len = 0
         emitted_tokens = 0
         next_index = start_index
 
@@ -75,17 +77,26 @@ class TokenizedSvgDataset:
                 continue
             ids = ids[: block_size + 1]
             seq_tokens = len(ids) - 1
-            if batch and batch_tokens + seq_tokens > tokens_per_batch:
+            new_max_len = max(batch_max_len, seq_tokens)
+            new_padded_tokens = (len(batch) + 1) * new_max_len
+            exceeds_true_tokens = batch_tokens + seq_tokens > tokens_per_batch
+            exceeds_padded_tokens = (
+                max_padded_tokens_per_batch is not None
+                and new_padded_tokens > max_padded_tokens_per_batch
+            )
+            if batch and (exceeds_true_tokens or exceeds_padded_tokens):
                 x, y, mask, ntok = _collate_lm_batch(batch, pad_token_id)
                 emitted_tokens += ntok
                 yield idx, x, y, mask, ntok
                 batch = []
                 batch_tokens = 0
+                batch_max_len = 0
                 if max_tokens is not None and emitted_tokens >= max_tokens:
                     return
 
             batch.append(ids)
             batch_tokens += seq_tokens
+            batch_max_len = max(batch_max_len, seq_tokens)
             next_index = idx + 1
 
         if batch:
@@ -277,6 +288,7 @@ class Part2Trainer:
             for _, x, y, mask, ntok in self.val_data.iter_batches(
                 start_index=0,
                 tokens_per_batch=int(train_cfg["tokens_per_batch"]),
+                max_padded_tokens_per_batch=int(train_cfg.get("max_padded_tokens_per_batch", 0)) or None,
                 block_size=int(self.model_config.block_size),
                 pad_token_id=int(self.model_config.pad_token_id),
                 max_tokens=max_eval_tokens,
@@ -322,6 +334,7 @@ class Part2Trainer:
         for next_row, x, y, mask, ntok in self.train_data.iter_batches(
             start_index=self.next_row_index,
             tokens_per_batch=int(train_cfg["tokens_per_batch"]),
+            max_padded_tokens_per_batch=int(train_cfg.get("max_padded_tokens_per_batch", 0)) or None,
             block_size=int(self.model_config.block_size),
             pad_token_id=int(self.model_config.pad_token_id),
             max_tokens=max_train_tokens,

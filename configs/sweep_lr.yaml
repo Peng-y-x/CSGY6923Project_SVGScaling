@@ -1,18 +1,16 @@
 base_config: configs/train_tiny.yaml
 run_prefix: tiny_lr
-output_dir: outputs/part2_lr_sweep
-drive_output_dir: /content/drive/MyDrive/svg-scaling/part2_lr_sweep
+output_dir: outputs/part2_lr_sweep_v2
+drive_output_dir: /content/drive/MyDrive/svg-scaling/part2_lr_sweep_v2
 resume: auto
 
 # 7 log-scale candidates satisfy the Part 2 sweep requirement.
 learning_rates:
-  - 0.00005
-  - 0.0001
-  - 0.0002
-  - 0.0004
-  - 0.0006
   - 0.001
   - 0.002
+  - 0.004
+  - 0.008
+  - 0.01
 
 # Set these only for debugging. For final Part 2, leave them commented/absent
 # so each sweep run uses the full one-epoch protocol.

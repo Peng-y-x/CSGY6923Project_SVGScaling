@@ -2,8 +2,8 @@ seed: 42
 
 run:
   name: medium
-  output_dir: outputs/part2
-  drive_output_dir: /content/drive/MyDrive/svg-scaling/part2
+  output_dir: outputs/part2_v2
+  drive_output_dir: /content/drive/MyDrive/svg-scaling/part2_v2
   resume: auto
   save_latest_only: true
   device: cuda
@@ -29,6 +29,7 @@ model:
 training:
   learning_rate: 0.0006
   tokens_per_batch: 16384
+  max_padded_tokens_per_batch: 16384
   warmup_ratio: 0.02
   min_lr_ratio: 0.1
   weight_decay: 0.1
