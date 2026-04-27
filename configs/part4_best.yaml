@@ -2,8 +2,8 @@ seed: 42
 
 run:
   name: best_mup_xl
-  output_dir: outputs/part4_best
-  drive_output_dir: /content/drive/MyDrive/svg-scaling/part4_best
+  output_dir: outputs/part4_best_v2
+  drive_output_dir: /content/drive/MyDrive/svg-scaling/part4_best_v2
   resume: auto
   save_latest_only: true
   device: cuda

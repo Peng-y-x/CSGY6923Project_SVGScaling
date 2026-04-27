@@ -10,6 +10,7 @@ from typing import Any
 
 import torch
 import yaml
+from huggingface_hub import hf_hub_download
 from tokenizers import Tokenizer
 from tokenizers.decoders import ByteLevel as ByteLevelDecoder
 
@@ -27,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", default="configs/part4_generation.yaml")
     parser.add_argument("--checkpoint-path", default=None)
     parser.add_argument("--tokenizer-path", default=None)
+    parser.add_argument("--tokenizer-hf-repo-id", default=None)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--drive-output-dir", default=None)
     parser.add_argument("--max-new-tokens", type=int, default=None)
@@ -60,14 +62,28 @@ def main() -> None:
     cfg = load_config(args.config)
     checkpoint_path = Path(args.checkpoint_path or cfg["checkpoint_path"])
     tokenizer_path = Path(args.tokenizer_path or cfg["tokenizer_path"])
+    tokenizer_hf_repo_id = args.tokenizer_hf_repo_id or cfg.get("tokenizer_hf_repo_id")
+    tokenizer_filename = str(cfg.get("tokenizer_filename", "tokenizer.json"))
     output_dir = Path(args.output_dir or cfg.get("output_dir", "outputs/part4_samples"))
     drive_output_dir = args.drive_output_dir or cfg.get("drive_output_dir")
     max_new_tokens = int(args.max_new_tokens or cfg.get("max_new_tokens", 768))
 
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Missing checkpoint: {checkpoint_path}")
+    if not tokenizer_path.exists() and tokenizer_hf_repo_id:
+        tokenizer_path.parent.mkdir(parents=True, exist_ok=True)
+        downloaded = hf_hub_download(
+            repo_id=tokenizer_hf_repo_id,
+            filename=tokenizer_filename,
+            repo_type="model",
+        )
+        shutil.copy2(downloaded, tokenizer_path)
+        print(f"[tokenizer] Downloaded {tokenizer_filename} from {tokenizer_hf_repo_id} to {tokenizer_path}")
     if not tokenizer_path.exists():
-        raise FileNotFoundError(f"Missing tokenizer: {tokenizer_path}")
+        raise FileNotFoundError(
+            f"Missing tokenizer: {tokenizer_path}. "
+            "Pass --tokenizer-hf-repo-id or set tokenizer_hf_repo_id in the generation config."
+        )
 
     seed = int(cfg.get("seed", 42))
     torch.manual_seed(seed)
@@ -95,10 +111,16 @@ def main() -> None:
     temperatures = [float(x) for x in cfg.get("temperatures", [0.8])]
     top_k = int(cfg.get("top_k", 0))
     top_p = float(cfg.get("top_p", 1.0))
+    stop_text = cfg.get("stop_text", "</svg>")
     unconditional_count = int(cfg.get("unconditional_count", 10))
     prefix_count = int(cfg.get("prefix_count", 5))
     prefixes = cfg.get("prefixes", [])
-    prefix_text = "<svg"
+    prefix_text = str(
+        cfg.get(
+            "unconditional_prefix",
+            '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">',
+        )
+    )
 
     sample_index = 0
     with torch.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_autocast):
@@ -113,6 +135,8 @@ def main() -> None:
                 top_k=top_k,
                 top_p=top_p,
                 eos_token_id=eos_id,
+                stop_text=stop_text,
+                decode_fn=tokenizer.decode,
             )
             raw = tokenizer.decode(ids)
             svg = _clean_svg(raw)
@@ -132,6 +156,7 @@ def main() -> None:
                     "top_k": top_k,
                     "top_p": top_p,
                     "prefix": prefix_text,
+                    "stop_text": stop_text,
                     "svg_path": str(svg_path),
                     "png_path": str(png_path),
                     "render_ok": render_ok,
@@ -152,6 +177,8 @@ def main() -> None:
                 top_k=top_k,
                 top_p=top_p,
                 eos_token_id=eos_id,
+                stop_text=stop_text,
+                decode_fn=tokenizer.decode,
             )
             raw = tokenizer.decode(ids)
             svg = _clean_svg(raw)
@@ -172,6 +199,7 @@ def main() -> None:
                     "top_p": top_p,
                     "prefix_name": prefix.get("name", ""),
                     "prefix": text,
+                    "stop_text": stop_text,
                     "svg_path": str(svg_path),
                     "png_path": str(png_path),
                     "render_ok": render_ok,
@@ -186,6 +214,8 @@ def main() -> None:
             {
                 "checkpoint_path": str(checkpoint_path),
                 "tokenizer_path": str(tokenizer_path),
+                "tokenizer_hf_repo_id": tokenizer_hf_repo_id,
+                "stop_text": stop_text,
                 "num_samples": len(rows),
                 "num_rendered": sum(1 for r in rows if r["render_ok"]),
                 "checkpoint_config": ckpt.get("config", {}),

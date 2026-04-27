@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import torch
 import torch.nn.functional as F
 
@@ -32,6 +34,8 @@ def generate_ids(
     top_k: int,
     top_p: float,
     eos_token_id: int | None = None,
+    stop_text: str | None = None,
+    decode_fn: Callable[[list[int]], str] | None = None,
 ) -> list[int]:
     cfg = model.cfg
     device = next(model.parameters()).device
@@ -49,4 +53,8 @@ def generate_ids(
         ids = torch.cat([ids, next_id], dim=1)
         if eos_token_id is not None and int(next_id.item()) == eos_token_id:
             break
+        if stop_text and decode_fn is not None:
+            decoded = decode_fn([int(x) for x in ids[0].detach().cpu().tolist()])
+            if stop_text in decoded:
+                break
     return [int(x) for x in ids[0].detach().cpu().tolist()]

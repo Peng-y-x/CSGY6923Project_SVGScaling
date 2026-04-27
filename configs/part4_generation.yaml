@@ -1,16 +1,20 @@
 tokenizer_path: data/processed/v1-clean-rawsplit/tokenizer/tokenizer.json
-checkpoint_path: outputs/part4_best/best_mup_xl/checkpoints/best.pt
-output_dir: outputs/part4_samples
-drive_output_dir: /content/drive/MyDrive/svg-scaling/part4_samples
+tokenizer_hf_repo_id: Zala0429/svg-scaling-tokenizer-v1
+tokenizer_filename: tokenizer.json
+checkpoint_path: outputs/part4_best_v2/best_mup_xl/checkpoints/best.pt
+output_dir: outputs/part4_samples_v2
+drive_output_dir: /content/drive/MyDrive/svg-scaling/part4_samples_v2
 device: cuda
 precision: bf16
 seed: 42
-max_new_tokens: 768
-unconditional_count: 12
-prefix_count: 6
-temperatures: [0.5, 0.8, 1.0]
-top_k: 50
-top_p: 0.95
+max_new_tokens: 1536
+unconditional_count: 36
+prefix_count: 9
+temperatures: [0.2, 0.4, 0.6]
+top_k: 20
+top_p: 0.9
+stop_text: "</svg>"
+unconditional_prefix: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">'
 prefixes:
   - name: face_one_eye
     text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><circle cx="64" cy="64" r="48" fill="#ffd166"/><circle cx="48" cy="52" r="6" fill="#222"/>'
@@ -24,3 +28,9 @@ prefixes:
     text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><rect x="28" y="36" width="72" height="56" rx="8" fill="#51cf66"/>'
   - name: symmetric_eyes
     text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><circle cx="44" cy="48" r="8" fill="#111"/><circle cx="84" cy="48" r="8" fill="#111"/>'
+  - name: outlined_badge
+    text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><circle cx="64" cy="64" r="46" fill="none" stroke="#222" stroke-width="6"/><path d="M42 70'
+  - name: stacked_bars
+    text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><rect x="24" y="30" width="80" height="14" rx="4" fill="#228be6"/><rect x="24" y="56"'
+  - name: house_start
+    text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><path d="M24 62 L64 28 L104 62" fill="none" stroke="#333" stroke-width="8"/><rect x="38"'
