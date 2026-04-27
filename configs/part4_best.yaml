@@ -1,0 +1,43 @@
+seed: 42
+
+run:
+  name: best_mup_xl
+  output_dir: outputs/part4_best
+  drive_output_dir: /content/drive/MyDrive/svg-scaling/part4_best
+  resume: auto
+  save_latest_only: true
+  device: cuda
+  precision: bf16
+
+data:
+  source: hf
+  hf_repo_id: Zala0429/svg-scaling-v2-tokenized
+  train_total_tokens: 284601303
+  mean_seq_len: 668
+
+model:
+  vocab_size: 4096
+  block_size: 2048
+  d_model: 768
+  n_layers: 12
+  n_heads: 12
+  d_ff: 3072
+  dropout: 0.0
+  pad_token_id: 0
+  bias: true
+  base_d_model: 192
+
+training:
+  learning_rate: 0.0006
+  max_epochs: 3
+  tokens_per_batch: 16384
+  max_padded_tokens_per_batch: 16384
+  warmup_ratio: 0.02
+  min_lr_ratio: 0.1
+  weight_decay: 0.1
+  betas: [0.9, 0.95]
+  eps: 0.00000001
+  max_grad_norm: 1.0
+  log_interval_steps: 20
+  eval_interval_steps: 0
+  checkpoint_interval_steps: 100

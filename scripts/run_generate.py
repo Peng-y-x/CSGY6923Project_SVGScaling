@@ -1,0 +1,210 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+from typing import Any
+
+import torch
+import yaml
+from tokenizers import Tokenizer
+from tokenizers.decoders import ByteLevel as ByteLevelDecoder
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.generation.render import make_image_grid, render_svg_to_png
+from src.generation.sampling import generate_ids
+from src.models.checkpoint import load_checkpoint_model
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate Part 4 SVG samples.")
+    parser.add_argument("--config", default="configs/part4_generation.yaml")
+    parser.add_argument("--checkpoint-path", default=None)
+    parser.add_argument("--tokenizer-path", default=None)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--drive-output-dir", default=None)
+    parser.add_argument("--max-new-tokens", type=int, default=None)
+    return parser.parse_args()
+
+
+def load_config(path: str) -> dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def _clean_svg(text: str) -> str:
+    start = text.find("<svg")
+    if start >= 0:
+        text = text[start:]
+    end = text.find("</svg>")
+    if end >= 0:
+        text = text[: end + len("</svg>")]
+    return text.strip()
+
+
+def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def main() -> None:
+    args = parse_args()
+    cfg = load_config(args.config)
+    checkpoint_path = Path(args.checkpoint_path or cfg["checkpoint_path"])
+    tokenizer_path = Path(args.tokenizer_path or cfg["tokenizer_path"])
+    output_dir = Path(args.output_dir or cfg.get("output_dir", "outputs/part4_samples"))
+    drive_output_dir = args.drive_output_dir or cfg.get("drive_output_dir")
+    max_new_tokens = int(args.max_new_tokens or cfg.get("max_new_tokens", 768))
+
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Missing checkpoint: {checkpoint_path}")
+    if not tokenizer_path.exists():
+        raise FileNotFoundError(f"Missing tokenizer: {tokenizer_path}")
+
+    seed = int(cfg.get("seed", 42))
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+    device_name = str(cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
+    device = torch.device(device_name if torch.cuda.is_available() or device_name == "cpu" else "cpu")
+    precision = str(cfg.get("precision", "bf16"))
+    autocast_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
+    use_autocast = device.type == "cuda" and precision in {"bf16", "fp16"}
+
+    tokenizer = Tokenizer.from_file(str(tokenizer_path))
+    if tokenizer.decoder is None:
+        tokenizer.decoder = ByteLevelDecoder()
+    eos_id = tokenizer.token_to_id("<eos>")
+    model, ckpt = load_checkpoint_model(checkpoint_path, device)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    svg_dir = output_dir / "svg"
+    png_dir = output_dir / "png"
+    rows: list[dict[str, Any]] = []
+    rendered_paths: list[Path] = []
+
+    temperatures = [float(x) for x in cfg.get("temperatures", [0.8])]
+    top_k = int(cfg.get("top_k", 0))
+    top_p = float(cfg.get("top_p", 1.0))
+    unconditional_count = int(cfg.get("unconditional_count", 10))
+    prefix_count = int(cfg.get("prefix_count", 5))
+    prefixes = cfg.get("prefixes", [])
+    prefix_text = "<svg"
+
+    sample_index = 0
+    with torch.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_autocast):
+        for i in range(unconditional_count):
+            temp = temperatures[i % len(temperatures)]
+            input_ids = tokenizer.encode(prefix_text).ids
+            ids = generate_ids(
+                model,
+                input_ids,
+                max_new_tokens=max_new_tokens,
+                temperature=temp,
+                top_k=top_k,
+                top_p=top_p,
+                eos_token_id=eos_id,
+            )
+            raw = tokenizer.decode(ids)
+            svg = _clean_svg(raw)
+            sample_id = f"unconditional_{i:02d}_t{temp:g}"
+            svg_path = svg_dir / f"{sample_id}.svg"
+            png_path = png_dir / f"{sample_id}.png"
+            svg_path.parent.mkdir(parents=True, exist_ok=True)
+            svg_path.write_text(svg, encoding="utf-8")
+            render_ok = render_svg_to_png(svg, png_path)
+            if render_ok:
+                rendered_paths.append(png_path)
+            rows.append(
+                {
+                    "id": sample_id,
+                    "kind": "unconditional",
+                    "temperature": temp,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                    "prefix": prefix_text,
+                    "svg_path": str(svg_path),
+                    "png_path": str(png_path),
+                    "render_ok": render_ok,
+                    "svg": svg,
+                }
+            )
+            sample_index += 1
+
+        for i, prefix in enumerate(prefixes[:prefix_count]):
+            temp = temperatures[i % len(temperatures)]
+            text = str(prefix["text"])
+            input_ids = tokenizer.encode(text).ids
+            ids = generate_ids(
+                model,
+                input_ids,
+                max_new_tokens=max_new_tokens,
+                temperature=temp,
+                top_k=top_k,
+                top_p=top_p,
+                eos_token_id=eos_id,
+            )
+            raw = tokenizer.decode(ids)
+            svg = _clean_svg(raw)
+            sample_id = f"prefix_{i:02d}_{prefix.get('name', 'sample')}_t{temp:g}"
+            svg_path = svg_dir / f"{sample_id}.svg"
+            png_path = png_dir / f"{sample_id}.png"
+            svg_path.parent.mkdir(parents=True, exist_ok=True)
+            svg_path.write_text(svg, encoding="utf-8")
+            render_ok = render_svg_to_png(svg, png_path)
+            if render_ok:
+                rendered_paths.append(png_path)
+            rows.append(
+                {
+                    "id": sample_id,
+                    "kind": "prefix",
+                    "temperature": temp,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                    "prefix_name": prefix.get("name", ""),
+                    "prefix": text,
+                    "svg_path": str(svg_path),
+                    "png_path": str(png_path),
+                    "render_ok": render_ok,
+                    "svg": svg,
+                }
+            )
+            sample_index += 1
+
+    _write_jsonl(output_dir / "samples.jsonl", rows)
+    (output_dir / "generation_summary.json").write_text(
+        json.dumps(
+            {
+                "checkpoint_path": str(checkpoint_path),
+                "tokenizer_path": str(tokenizer_path),
+                "num_samples": len(rows),
+                "num_rendered": sum(1 for r in rows if r["render_ok"]),
+                "checkpoint_config": ckpt.get("config", {}),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    make_image_grid([Path(r["png_path"]) for r in rows], output_dir / "generated_grid.png", cols=5)
+
+    if drive_output_dir:
+        drive_path = Path(os.path.expandvars(os.path.expanduser(drive_output_dir)))
+        drive_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(output_dir, drive_path, dirs_exist_ok=True)
+        print(f"[generate] Synced results to Drive: {drive_path}")
+
+    print(json.dumps({"output_dir": str(output_dir), "num_samples": len(rows)}, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
