@@ -15,3 +15,9 @@ outputs/
 
 # Tokens
 secrets.txt
+
+# report
+svg_scaling_report.docx
+.gitignore
+scripts/build_report_docx.py
+report

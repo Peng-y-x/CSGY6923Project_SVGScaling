@@ -25,6 +25,7 @@ class MupTransformerConfig:
     pad_token_id: int = 0
     bias: bool = True
     base_d_model: int = 64
+    attention_scale: str = "mup"
 
 
 class MupCausalSelfAttention(nn.Module):
@@ -34,6 +35,7 @@ class MupCausalSelfAttention(nn.Module):
             raise ValueError("d_model must be divisible by n_heads")
         self.n_heads = cfg.n_heads
         self.head_dim = cfg.d_model // cfg.n_heads
+        self.attention_scale = cfg.attention_scale
         self.qkv = nn.Linear(cfg.d_model, 3 * cfg.d_model, bias=cfg.bias)
         self.proj = nn.Linear(cfg.d_model, cfg.d_model, bias=cfg.bias)
         self.attn_drop = nn.Dropout(cfg.dropout)
@@ -50,6 +52,12 @@ class MupCausalSelfAttention(nn.Module):
         if key_padding_mask is not None:
             attn_mask = attn_mask.view(1, 1, seq_len, seq_len) & key_padding_mask.view(bsz, 1, 1, seq_len)
 
+        scale = None
+        if self.attention_scale == "mup":
+            scale = 1.0 / float(self.head_dim)
+        elif self.attention_scale != "sp":
+            raise ValueError("attention_scale must be 'mup' or 'sp'")
+
         y = F.scaled_dot_product_attention(
             q,
             k,
@@ -57,7 +65,7 @@ class MupCausalSelfAttention(nn.Module):
             attn_mask=attn_mask,
             dropout_p=self.attn_drop.p if self.training else 0.0,
             is_causal=False,
-            scale=1.0 / float(self.head_dim),
+            scale=scale,
         )
         y = y.transpose(1, 2).contiguous().view(bsz, seq_len, width)
         return self.resid_drop(self.proj(y))
@@ -165,4 +173,5 @@ def make_mup_base_config(cfg: MupTransformerConfig, d_model: int | None = None) 
         pad_token_id=cfg.pad_token_id,
         bias=cfg.bias,
         base_d_model=base_width,
+        attention_scale=cfg.attention_scale,
     )

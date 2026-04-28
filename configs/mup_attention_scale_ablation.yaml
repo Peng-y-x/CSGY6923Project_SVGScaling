@@ -1,0 +1,20 @@
+base_configs:
+  - configs/mup_tiny.yaml
+  - configs/mup_small.yaml
+
+output_dir: outputs/part3_attention_scale_ablation
+drive_output_dir: /content/drive/MyDrive/svg-scaling/part3_attention_scale_ablation
+analysis_dir: outputs/part3_attention_scale_ablation_analysis
+drive_analysis_dir: /content/drive/MyDrive/svg-scaling/part3_attention_scale_ablation_analysis
+
+# Use the Part 3 muP-selected LR unless overridden by CLI.
+learning_rate: 0.004
+resume: auto
+
+attention_scales:
+  - mup
+  - sp
+
+# Optional debug caps. Leave commented for final one-epoch ablation.
+# max_train_tokens: 20000000
+# max_eval_tokens: 1000000
