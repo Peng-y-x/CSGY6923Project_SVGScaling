@@ -25,8 +25,9 @@ from src.data.validate_svg import (
     validate_render,
     validate_xml,
 )
+from src.utils.hf_auth import ensure_hf_token_from_colab
 
-PIPELINE_VERSION = "preprocess-v2"
+PIPELINE_VERSION = "preprocess-v3"
 
 
 def parse_args() -> argparse.Namespace:
@@ -182,9 +183,36 @@ def _load_manifest(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _upload_analysis_files_to_hf(
+    *,
+    repo_id: str,
+    files: list[Path],
+) -> None:
+    try:
+        from huggingface_hub import HfApi
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            "Missing dependency: huggingface_hub. Install with `pip install huggingface_hub`."
+        ) from exc
+
+    api = HfApi()
+    for file_path in files:
+        if not file_path.exists():
+            continue
+        api.upload_file(
+            path_or_fileobj=str(file_path),
+            path_in_repo=f"analysis/{file_path.name}",
+            repo_id=repo_id,
+            repo_type="dataset",
+        )
+
+
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
+    loaded = ensure_hf_token_from_colab(config)
+    if loaded:
+        print("[auth] Loaded HF token from Colab key.")
 
     output_dir = Path(config["output"]["dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -402,13 +430,6 @@ def main() -> None:
     with (output_dir / "examples_manifest.json").open("w", encoding="utf-8") as f:
         json.dump(examples_manifest, f, ensure_ascii=False, indent=2)
 
-    if min_train_tokens_estimate > 0 and summary["train_token_est_total"] < min_train_tokens_estimate:
-        raise RuntimeError(
-            "Train token estimate below configured target: "
-            f"{summary['train_token_est_total']} < {min_train_tokens_estimate}. "
-            "Increase source data (e.g., max_samples for large datasets) and rerun."
-        )
-
     print("[7/8] Optional push to HF hub...")
     push_cfg = config.get("hf_push", {})
     if bool(push_cfg.get("enabled", False)):
@@ -437,10 +458,21 @@ def main() -> None:
     with manifest_path.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
+    push_cfg = config.get("hf_push", {})
+    if bool(push_cfg.get("enabled", False)) and bool(
+        push_cfg.get("upload_analysis_json", True)
+    ):
+        analysis_files = [
+            output_dir / "stats.json",
+            output_dir / "examples_manifest.json",
+            output_dir / "manifest.json",
+        ]
+        _upload_analysis_files_to_hf(repo_id=push_cfg["repo_id"], files=analysis_files)
+        print("Uploaded analysis json files to hub under analysis/.")
+
     print("Done.")
     print(f"Output directory: {output_dir}")
 
 
 if __name__ == "__main__":
     main()
-

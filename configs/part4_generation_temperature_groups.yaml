@@ -1,0 +1,48 @@
+tokenizer_path: data/processed/v1-clean-rawsplit/tokenizer/tokenizer.json
+checkpoint_path: outputs/part4_best/best_mup_xl/checkpoints/best.pt
+output_dir: outputs/part4_generation_temperature_groups
+drive_output_dir: /content/drive/MyDrive/svg-scaling/part4_generation_temperature_groups
+device: cuda
+precision: bf16
+seed: 2026
+max_new_tokens: 768
+top_k: 50
+top_p: 0.95
+stop_text: null
+unconditional_prefix: "<svg"
+
+temperature_groups:
+  - name: temp_0_5
+    temperature: 0.5
+    unconditional_count: 20
+    prefix_count: 5
+  - name: temp_0_8
+    temperature: 0.8
+    unconditional_count: 20
+    prefix_count: 5
+  - name: temp_1_0
+    temperature: 1.0
+    unconditional_count: 20
+    prefix_count: 5
+
+prefixes:
+  - name: smiley_face_one_eye
+    description: "Reference is a complete smiley face; prefix contains the face and one eye."
+    reference_svg: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><circle cx="64" cy="64" r="48" fill="#ffd166"/><circle cx="48" cy="54" r="6" fill="#222"/><circle cx="80" cy="54" r="6" fill="#222"/><path d="M46 78 Q64 94 82 78" fill="none" stroke="#222" stroke-width="6" stroke-linecap="round"/></svg>'
+    text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><circle cx="64" cy="64" r="48" fill="#ffd166"/><circle cx="48" cy="54" r="6" fill="#222"/>'
+  - name: closed_path_loop
+    description: "Reference is a closed blue curved shape; prefix stops after the first cubic curve."
+    reference_svg: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><path d="M24 72 C40 24 88 24 104 72 C88 104 40 104 24 72 Z" fill="#74c0fc" stroke="#1c7ed6" stroke-width="6"/></svg>'
+    text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><path d="M24 72 C40 24 88 24 104 72'
+  - name: grouped_bubbles
+    description: "Reference is a group of related circles; prefix contains the group opening and first bubble."
+    reference_svg: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><g fill="#4dabf7" stroke="#1c7ed6" stroke-width="4"><circle cx="44" cy="64" r="20"/><circle cx="72" cy="50" r="16"/><circle cx="82" cy="78" r="14"/></g></svg>'
+    text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><g fill="#4dabf7" stroke="#1c7ed6" stroke-width="4"><circle cx="44" cy="64" r="20"/>'
+  - name: simple_house
+    description: "Reference is a house icon; prefix contains roof and the start of the body."
+    reference_svg: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><path d="M24 62 L64 28 L104 62" fill="none" stroke="#333" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><rect x="38" y="62" width="52" height="42" rx="4" fill="#ffd43b" stroke="#333" stroke-width="6"/><rect x="58" y="78" width="14" height="26" fill="#ff922b"/></svg>'
+    text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><path d="M24 62 L64 28 L104 62" fill="none" stroke="#333" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><rect x="38"'
+  - name: stacked_bars
+    description: "Reference is a three-bar icon; prefix contains the first bar and starts the second."
+    reference_svg: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><rect x="24" y="30" width="80" height="14" rx="4" fill="#228be6"/><rect x="24" y="56" width="64" height="14" rx="4" fill="#51cf66"/><rect x="24" y="82" width="48" height="14" rx="4" fill="#ff6b6b"/></svg>'
+    text: '<svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg"><rect x="24" y="30" width="80" height="14" rx="4" fill="#228be6"/><rect x="24" y="56"'

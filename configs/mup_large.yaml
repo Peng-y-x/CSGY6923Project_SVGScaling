@@ -1,9 +1,9 @@
 seed: 42
 
 run:
-  name: large
-  output_dir: outputs/part2_v2
-  drive_output_dir: /content/drive/MyDrive/svg-scaling/part2_v2
+  name: large_mup
+  output_dir: outputs/part3_mup
+  drive_output_dir: /content/drive/MyDrive/svg-scaling/part3_mup
   resume: auto
   save_latest_only: true
   device: cuda
@@ -25,6 +25,7 @@ model:
   dropout: 0.0
   pad_token_id: 0
   bias: true
+  base_d_model: 128
 
 training:
   learning_rate: 0.0006

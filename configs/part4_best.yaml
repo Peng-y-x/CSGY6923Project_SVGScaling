@@ -1,9 +1,9 @@
 seed: 42
 
 run:
-  name: large
-  output_dir: outputs/part2_v2
-  drive_output_dir: /content/drive/MyDrive/svg-scaling/part2_v2
+  name: best_mup_xl
+  output_dir: outputs/part4_best_v2
+  drive_output_dir: /content/drive/MyDrive/svg-scaling/part4_best_v2
   resume: auto
   save_latest_only: true
   device: cuda
@@ -18,16 +18,18 @@ data:
 model:
   vocab_size: 4096
   block_size: 2048
-  d_model: 512
-  n_layers: 10
-  n_heads: 8
-  d_ff: 2048
+  d_model: 768
+  n_layers: 12
+  n_heads: 12
+  d_ff: 3072
   dropout: 0.0
   pad_token_id: 0
   bias: true
+  base_d_model: 192
 
 training:
   learning_rate: 0.0006
+  max_epochs: 3
   tokens_per_batch: 16384
   max_padded_tokens_per_batch: 16384
   warmup_ratio: 0.02

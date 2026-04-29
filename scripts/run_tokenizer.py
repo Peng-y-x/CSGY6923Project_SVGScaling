@@ -58,6 +58,7 @@ def main() -> None:
         )
 
     tok_cfg = cfg.get("tokenization", {})
+    target_cfg = cfg.get("targets", {})
     tokenizer_out_dir = Path(tok_cfg.get("output_dir", processed_dir / "tokenizer"))
     vocab_size = int(tok_cfg.get("vocab_size", 4096))
     min_frequency = int(tok_cfg.get("min_frequency", 2))
@@ -101,6 +102,16 @@ def main() -> None:
     }
     with (tokenizer_out_dir / "token_stats.json").open("w", encoding="utf-8") as f:
         json.dump(stats, f, ensure_ascii=False, indent=2)
+
+    min_train_tokens = int(target_cfg.get("min_train_tokens_estimate", 0))
+    if min_train_tokens > 0:
+        train_tokens = int(stats["splits"]["train"]["total_tokens"])
+        if train_tokens < min_train_tokens:
+            raise RuntimeError(
+                "Train token total below configured target after tokenizer encoding: "
+                f"{train_tokens} < {min_train_tokens}. "
+                "Increase source data (or max_samples), rerun preprocess+tokenizer."
+            )
 
     print("Done.")
     print(f"Vocab size: {stats['vocab_size']}")
