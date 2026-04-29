@@ -57,6 +57,56 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def _generate_one(
+    *,
+    model: torch.nn.Module,
+    tokenizer: Tokenizer,
+    eos_id: int | None,
+    text: str,
+    max_new_tokens: int,
+    temperature: float,
+    top_k: int,
+    top_p: float,
+    stop_text: str | None,
+) -> str:
+    input_ids = tokenizer.encode(text).ids
+    ids = generate_ids(
+        model,
+        input_ids,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_k=top_k,
+        top_p=top_p,
+        eos_token_id=eos_id,
+        stop_text=stop_text,
+        decode_fn=tokenizer.decode,
+    )
+    return _clean_svg(tokenizer.decode(ids))
+
+
+def _write_sample(
+    *,
+    row: dict[str, Any],
+    svg: str,
+    svg_dir: Path,
+    png_dir: Path,
+) -> tuple[dict[str, Any], Path | None]:
+    svg_path = svg_dir / f"{row['id']}.svg"
+    png_path = png_dir / f"{row['id']}.png"
+    svg_path.parent.mkdir(parents=True, exist_ok=True)
+    svg_path.write_text(svg, encoding="utf-8")
+    render_ok = render_svg_to_png(svg, png_path)
+    row.update(
+        {
+            "svg_path": str(svg_path),
+            "png_path": str(png_path),
+            "render_ok": render_ok,
+            "svg": svg,
+        }
+    )
+    return row, png_path if render_ok else None
+
+
 def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
@@ -124,32 +174,100 @@ def main() -> None:
 
     sample_index = 0
     with torch.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_autocast):
-        for i in range(unconditional_count):
-            temp = temperatures[i % len(temperatures)]
-            input_ids = tokenizer.encode(prefix_text).ids
-            ids = generate_ids(
-                model,
-                input_ids,
-                max_new_tokens=max_new_tokens,
-                temperature=temp,
-                top_k=top_k,
-                top_p=top_p,
-                eos_token_id=eos_id,
-                stop_text=stop_text,
-                decode_fn=tokenizer.decode,
-            )
-            raw = tokenizer.decode(ids)
-            svg = _clean_svg(raw)
-            sample_id = f"unconditional_{i:02d}_t{temp:g}"
-            svg_path = svg_dir / f"{sample_id}.svg"
-            png_path = png_dir / f"{sample_id}.png"
-            svg_path.parent.mkdir(parents=True, exist_ok=True)
-            svg_path.write_text(svg, encoding="utf-8")
-            render_ok = render_svg_to_png(svg, png_path)
-            if render_ok:
-                rendered_paths.append(png_path)
-            rows.append(
-                {
+        temperature_groups = cfg.get("temperature_groups")
+        if temperature_groups:
+            group_prefixes = cfg.get("prefixes", [])
+            for group in temperature_groups:
+                group_name = str(group["name"])
+                temp = float(group["temperature"])
+                group_top_k = int(group.get("top_k", top_k))
+                group_top_p = float(group.get("top_p", top_p))
+                group_unconditional_count = int(group.get("unconditional_count", 20))
+                group_prefix_count = int(group.get("prefix_count", 5))
+                for i in range(group_unconditional_count):
+                    svg = _generate_one(
+                        model=model,
+                        tokenizer=tokenizer,
+                        eos_id=eos_id,
+                        text=prefix_text,
+                        max_new_tokens=max_new_tokens,
+                        temperature=temp,
+                        top_k=group_top_k,
+                        top_p=group_top_p,
+                        stop_text=stop_text,
+                    )
+                    row, png_path = _write_sample(
+                        row={
+                            "id": f"{group_name}_unconditional_{i:02d}",
+                            "group": group_name,
+                            "kind": "unconditional",
+                            "temperature": temp,
+                            "top_k": group_top_k,
+                            "top_p": group_top_p,
+                            "prefix": prefix_text,
+                            "stop_text": stop_text,
+                        },
+                        svg=svg,
+                        svg_dir=svg_dir,
+                        png_dir=png_dir,
+                    )
+                    rows.append(row)
+                    if png_path is not None:
+                        rendered_paths.append(png_path)
+                    sample_index += 1
+
+                for i, prefix in enumerate(group_prefixes[:group_prefix_count]):
+                    text = str(prefix["text"])
+                    svg = _generate_one(
+                        model=model,
+                        tokenizer=tokenizer,
+                        eos_id=eos_id,
+                        text=text,
+                        max_new_tokens=max_new_tokens,
+                        temperature=temp,
+                        top_k=group_top_k,
+                        top_p=group_top_p,
+                        stop_text=stop_text,
+                    )
+                    row, png_path = _write_sample(
+                        row={
+                            "id": f"{group_name}_prefix_{i:02d}_{prefix.get('name', 'sample')}",
+                            "group": group_name,
+                            "kind": "prefix",
+                            "temperature": temp,
+                            "top_k": group_top_k,
+                            "top_p": group_top_p,
+                            "prefix_name": prefix.get("name", ""),
+                            "prefix": text,
+                            "reference_svg": prefix.get("reference_svg", ""),
+                            "reference_description": prefix.get("description", ""),
+                            "stop_text": stop_text,
+                        },
+                        svg=svg,
+                        svg_dir=svg_dir,
+                        png_dir=png_dir,
+                    )
+                    rows.append(row)
+                    if png_path is not None:
+                        rendered_paths.append(png_path)
+                    sample_index += 1
+        else:
+            for i in range(unconditional_count):
+                temp = temperatures[i % len(temperatures)]
+                svg = _generate_one(
+                    model=model,
+                    tokenizer=tokenizer,
+                    eos_id=eos_id,
+                    text=prefix_text,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temp,
+                    top_k=top_k,
+                    top_p=top_p,
+                    stop_text=stop_text,
+                )
+                sample_id = f"unconditional_{i:02d}_t{temp:g}"
+                row, png_path = _write_sample(
+                    row={
                     "id": sample_id,
                     "kind": "unconditional",
                     "temperature": temp,
@@ -157,41 +275,33 @@ def main() -> None:
                     "top_p": top_p,
                     "prefix": prefix_text,
                     "stop_text": stop_text,
-                    "svg_path": str(svg_path),
-                    "png_path": str(png_path),
-                    "render_ok": render_ok,
-                    "svg": svg,
-                }
-            )
-            sample_index += 1
+                    },
+                    svg=svg,
+                    svg_dir=svg_dir,
+                    png_dir=png_dir,
+                )
+                rows.append(row)
+                if png_path is not None:
+                    rendered_paths.append(png_path)
+                sample_index += 1
 
-        for i, prefix in enumerate(prefixes[:prefix_count]):
-            temp = temperatures[i % len(temperatures)]
-            text = str(prefix["text"])
-            input_ids = tokenizer.encode(text).ids
-            ids = generate_ids(
-                model,
-                input_ids,
-                max_new_tokens=max_new_tokens,
-                temperature=temp,
-                top_k=top_k,
-                top_p=top_p,
-                eos_token_id=eos_id,
-                stop_text=stop_text,
-                decode_fn=tokenizer.decode,
-            )
-            raw = tokenizer.decode(ids)
-            svg = _clean_svg(raw)
-            sample_id = f"prefix_{i:02d}_{prefix.get('name', 'sample')}_t{temp:g}"
-            svg_path = svg_dir / f"{sample_id}.svg"
-            png_path = png_dir / f"{sample_id}.png"
-            svg_path.parent.mkdir(parents=True, exist_ok=True)
-            svg_path.write_text(svg, encoding="utf-8")
-            render_ok = render_svg_to_png(svg, png_path)
-            if render_ok:
-                rendered_paths.append(png_path)
-            rows.append(
-                {
+            for i, prefix in enumerate(prefixes[:prefix_count]):
+                temp = temperatures[i % len(temperatures)]
+                text = str(prefix["text"])
+                svg = _generate_one(
+                    model=model,
+                    tokenizer=tokenizer,
+                    eos_id=eos_id,
+                    text=text,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temp,
+                    top_k=top_k,
+                    top_p=top_p,
+                    stop_text=stop_text,
+                )
+                sample_id = f"prefix_{i:02d}_{prefix.get('name', 'sample')}_t{temp:g}"
+                row, png_path = _write_sample(
+                    row={
                     "id": sample_id,
                     "kind": "prefix",
                     "temperature": temp,
@@ -199,14 +309,17 @@ def main() -> None:
                     "top_p": top_p,
                     "prefix_name": prefix.get("name", ""),
                     "prefix": text,
+                    "reference_svg": prefix.get("reference_svg", ""),
                     "stop_text": stop_text,
-                    "svg_path": str(svg_path),
-                    "png_path": str(png_path),
-                    "render_ok": render_ok,
-                    "svg": svg,
-                }
-            )
-            sample_index += 1
+                    },
+                    svg=svg,
+                    svg_dir=svg_dir,
+                    png_dir=png_dir,
+                )
+                rows.append(row)
+                if png_path is not None:
+                    rendered_paths.append(png_path)
+                sample_index += 1
 
     _write_jsonl(output_dir / "samples.jsonl", rows)
     (output_dir / "generation_summary.json").write_text(
@@ -218,6 +331,7 @@ def main() -> None:
                 "stop_text": stop_text,
                 "num_samples": len(rows),
                 "num_rendered": sum(1 for r in rows if r["render_ok"]),
+                "temperature_groups": cfg.get("temperature_groups", []),
                 "checkpoint_config": ckpt.get("config", {}),
             },
             ensure_ascii=False,
