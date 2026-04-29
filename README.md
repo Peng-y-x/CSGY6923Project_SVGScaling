@@ -1,197 +1,195 @@
-# CS-GY 6923 Optional Project (Spring 2026)
+# SVG Scaling Laws Optional Project
 
-This repository is the working codebase for the SVG language model scaling project.
+This repository contains the code for training decoder-only Transformer language models on SVG code, fitting scaling laws, comparing standard parameterization with muP, and evaluating generated SVG samples.
 
-## 1. Project Scope
-
-Goal: train decoder-only Transformer LMs on SVG code, study scaling laws, compare standard parameterization vs. muP, then generate and evaluate SVG samples.
-
-Course project deliverables:
-- PDF report (recommended 6-10 pages, excluding references/appendix)
-- Code repository with scripts + README
-
-## 2. Repository Layout
+## Code Structure
 
 ```text
-configs/        # experiment configs (data, model sizes, LR sweep, muP, generation)
-scripts/        # runnable entrypoints
+configs/
+  data.yaml                              # dataset cleaning, tokenizer, HF repo settings
+  sweep_lr.yaml                          # Part 2 standard Tiny LR sweep
+  train_{tiny,small,medium,large,xl}.yaml # Part 2 standard model configs
+  mup_sweep_lr.yaml                      # Part 3 muP Tiny LR sweep
+  mup_{tiny,small,medium,large,xl}.yaml  # Part 3 muP model configs
+  part4_best.yaml                        # Part 4 continued best-model training
+  part4_generation_temperature_groups.yaml # final Part 4 generation rerun
+
+scripts/
+  run_preprocess.py                      # download, clean, validate, split SVGs
+  run_tokenizer.py                       # train BPE tokenizer and encode splits
+  push_tokenizer_to_hf.py                # upload tokenizer artifacts
+  push_tokenized_dataset_to_hf.py        # upload tokenized dataset
+  run_lr_sweep.py / run_part2_all.py     # Part 2 LR sweep and standard scaling runs
+  run_mup_lr_sweep.py / run_part3_mup_all.py # Part 3 muP sweep and scaling runs
+  fit_scaling_law.py / fit_part3_scaling.py  # scaling-law fits and extrapolation
+  run_part4_train.py                     # continue training the best model
+  run_generate.py / run_eval.py          # generation and XML/render/structural evaluation
+  check_tokenizer_alignment.py           # tokenizer sanity check for generation
+
 src/
-  data/         # download, cleaning, validation, split, push to HF
-  tokenization/ # tokenizer training + encoding
-  models/       # transformer definitions (standard + muP)
-  train/        # trainer, optimizer/scheduler, metrics
-  eval/         # perplexity + XML/render/structural validity
-  generation/   # unconditional and prefix-conditioned generation
-  analysis/     # scaling fit + plots
-notebooks/      # optional analysis notebooks (non-critical path)
-outputs/        # figures/tables/samples generated during experiments
-report/         # report source and report figures
+  data/          # SVG cleaning, validation, split, HF utilities
+  tokenization/  # BPE tokenizer training and dataset encoding
+  models/        # standard Transformer and muP Transformer
+  train/         # trainers, optimizer, scheduler, metrics, checkpoints
+  eval/          # perplexity, XML validity, SVG structural/render checks
+  generation/    # sampling and rendering helpers
+  analysis/      # scaling-law fitting utilities
+
+colab_train_part*.ipynb                  # Colab execution notebooks used for the experiments
 ```
 
-## 3. Environment
+## Environment Setup
 
-Recommended: Python 3.10+ and PyTorch with CUDA for A100.
-
-Install:
+Python 3.10+ is recommended. For full training, use a CUDA GPU; the experiments were run on Colab A100 with `bf16` autocast.
 
 ```bash
-pip install -r requirements.txt
-```
-
-If you use Colab Pro:
-- Runtime: GPU (A100)
-- Clone this repo in Colab
-- Install dependencies
-- Authenticate Hugging Face when pushing/loading datasets or models
-
-Recommended startup commands for every fresh Colab session:
-
-```bash
-# 1) System packages required by CairoSVG render checks
-apt-get update -y
-apt-get install -y libcairo2 libcairo2-dev libffi-dev
-
-# 2) Python dependencies
 pip install -U pip
 pip install -r requirements.txt
-
-# 3) (Optional) login if you need HF push
-huggingface-cli login
-
-# 4) Quick sanity check for render validation
-python - <<'PY'
-from src.data.validate_svg import validate_render
-svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="6"/></svg>'
-ok, err = validate_render(svg)
-print("render_check_ok:", ok)
-print("render_check_err:", err)
-PY
 ```
 
-If your Hugging Face token is stored in Colab Keys, scripts can auto-load it.
-Default config:
-- `hf_auth.auto_load_colab_key: true`
-- `hf_auth.colab_key_name: HF_TOKEN`
+For Colab or Linux environments using CairoSVG render validation:
 
-## 4. Data Strategy (Recommended)
+```bash
+apt-get update -y
+apt-get install -y libcairo2 libcairo2-dev libffi-dev
+pip install -r requirements.txt
+```
 
-Use Hugging Face Datasets as the storage backend for cleaned/split datasets.
+If pushing datasets or tokenizer artifacts to Hugging Face:
 
-Why:
-- Stable versioning for reproducibility
-- Fast loading in Colab via `load_dataset(...)`
-- Shared canonical dataset across LR sweep and all model-size runs
+```bash
+huggingface-cli login
+```
 
-Recommended version tags:
-- `v1-clean-rawsplit`: cleaned SVG text with train/val/test split
-- `v2-tokenized`: tokenized dataset for training
+## Data and Tokenizer
 
-Keep all dataset construction scripts in this repo so results can be reproduced from source datasets.
+Build the cleaned SVG dataset and train/encode the tokenizer:
 
-## 5. End-to-End Execution Plan
-
-Run in this order:
-
-1. Data preprocessing
 ```bash
 python scripts/run_preprocess.py --config configs/data.yaml
-```
-This step records estimated token counts, but does not hard-fail on token target.
-This step also writes `manifest.json` and reuses existing processed outputs when the config hash matches (use `--force` to rebuild).
-
-2. Tokenizer training + encoding
-```bash
 python scripts/run_tokenizer.py --config configs/data.yaml
 ```
-This step enforces `targets.min_train_tokens_estimate` using real tokenizer token totals on the train split.
 
-2.1 Push tokenizer artifacts to HF model repo (optional but recommended)
+Optional upload commands:
+
 ```bash
 python scripts/push_tokenizer_to_hf.py --config configs/data.yaml
-```
-
-2.2 Push tokenized dataset to HF dataset repo (for direct training input_ids)
-```bash
 python scripts/push_tokenized_dataset_to_hf.py --config configs/data.yaml
 ```
 
-3. Part 2: smallest-model LR sweep (standard parameterization)
+The training configs can load the tokenized Hugging Face dataset directly, so if the dataset is already available on Hugging Face, later training runs do not need to rebuild local preprocessing artifacts.
+
+## Reproduce Experiments
+
+### Part 2: Standard Parameterization Scaling
+
+Run the Tiny learning-rate sweep:
+
 ```bash
 python scripts/run_lr_sweep.py --config configs/sweep_lr.yaml
 ```
 
-4. Part 2: 5 model scales, 1 epoch each
+Train all five model sizes with the selected Tiny LR:
+
 ```bash
-python scripts/run_train.py --config configs/train_tiny.yaml
-python scripts/run_train.py --config configs/train_small.yaml
-python scripts/run_train.py --config configs/train_medium.yaml
-python scripts/run_train.py --config configs/train_large.yaml
-python scripts/run_train.py --config configs/train_xl.yaml
+python scripts/run_part2_all.py --best-lr-json outputs/part2_lr_sweep_v2/best_lr.json
 ```
 
-5. Part 2 scaling-law fit and plots
+Fit the standard scaling curve:
+
 ```bash
 python scripts/fit_scaling_law.py
 ```
 
-6. Part 3: muP LR sweep + muP scaling runs
+### Part 3: muP Scaling and Extrapolation
+
+Run the muP Tiny learning-rate sweep:
+
 ```bash
-python scripts/run_mup_train.py --config configs/mup_tiny.yaml
+python scripts/run_mup_lr_sweep.py --config configs/mup_sweep_lr.yaml
 ```
 
-7. Part 4: best-model generation + evaluation
+Train all five muP model sizes with the selected Tiny LR:
+
 ```bash
-python scripts/run_generate.py --config configs/generation.yaml
-python scripts/run_eval.py
+python scripts/run_part3_mup_all.py --best-lr-json outputs/part3_mup_lr_sweep/best_lr.json
 ```
 
-## 6. Expected Artifacts
+Fit SP vs. muP scaling curves and compute the 10x extrapolation:
 
-- `outputs/figures/`
-  - scaling curve (standard)
-  - scaling curve (standard vs. muP)
-  - LR sweep plots
-  - training loss curves
-  - generated SVG render grids
-- `outputs/tables/`
-  - architecture table
-  - training throughput/memory/time table
-  - evaluation metrics table
-- `outputs/samples/`
-  - raw generated SVG files
-  - rendered PNGs
+```bash
+python scripts/fit_part3_scaling.py ^
+  --sp-runs-dir outputs/part2_v2 ^
+  --mup-runs-dir outputs/part3_mup ^
+  --sp-sweep-json outputs/part2_lr_sweep_v2/sweep_results.json ^
+  --mup-sweep-json outputs/part3_mup_lr_sweep/sweep_results.json ^
+  --output-dir outputs/part3_analysis
+```
 
-## 7. Minimum Report Checklist
+On Linux/macOS, replace `^` with `\` for line continuation.
 
-- Data pipeline and stats (token counts, split sizes, length histogram, filtering before/after)
-- LR sweep setup/results (smallest model)
-- Scaling plot + power-law fit (`L = a * N^{-alpha} + c`)
-- Standard vs. muP comparison
-- 10x parameter extrapolation with uncertainty discussion
-- Best-model sample generation and quantitative validity metrics
-- Design decisions, failures, limitations, and next steps
+### Part 4: Best Model Training and Generation
 
-## 8. Notes for Current Status
+Continue training the best model:
 
-Implemented now:
-1. `scripts/run_preprocess.py` end-to-end pipeline:
-- dataset download
-- SVG cleaning
-- XML validation
-- render validation (CairoSVG)
-- deduplication by SVG hash
-- file-aware split (`by_file`)
-- split export (`train/validation/test` JSONL)
-- stats + histograms + complexity examples (`.svg` and `.png`)
-2. `scripts/run_tokenizer.py`:
-- BPE tokenizer training
-- split encoding
-- vocab size + token totals + sequence length histograms
-3. HF publishing helpers:
-- `scripts/push_tokenizer_to_hf.py`
-- `scripts/push_tokenized_dataset_to_hf.py`
+```bash
+python scripts/run_part4_train.py --config configs/part4_best.yaml
+```
 
-Still pending:
-1. model training pipeline in `src/train/*` + `scripts/run_train.py`
-2. LR sweep automation and result logging
-3. scaling-law fit scripts wired to actual run outputs
+Run final temperature-group generation:
+
+```bash
+python scripts/run_generate.py ^
+  --config configs/part4_generation_temperature_groups.yaml ^
+  --checkpoint-path outputs/part4_best/best_mup_xl/checkpoints/best.pt ^
+  --tokenizer-path data/processed/v1-clean-rawsplit/tokenizer/tokenizer.json ^
+  --output-dir outputs/part4_generation_temperature_groups
+```
+
+Evaluate generated samples:
+
+```bash
+python scripts/run_eval.py ^
+  --train-config configs/part4_best.yaml ^
+  --checkpoint-path outputs/part4_best/best_mup_xl/checkpoints/best.pt ^
+  --samples-jsonl outputs/part4_generation_temperature_groups/samples.jsonl ^
+  --output-dir outputs/part4_generation_temperature_groups_eval
+```
+
+Before generation, verify tokenizer alignment if needed:
+
+```bash
+python scripts/check_tokenizer_alignment.py ^
+  --tokenizer-path data/processed/v1-clean-rawsplit/tokenizer/tokenizer.json ^
+  --dataset-repo Zala0429/svg-scaling-v2-tokenized
+```
+
+## Colab / Drive Notes
+
+The YAML configs include `drive_output_dir` fields for checkpoint syncing. In Colab, mount Drive first and rerun interrupted cells; trainers resume from `latest.pt` when available.
+
+The notebooks used for the submitted experiments are:
+
+```text
+colab_train_part1.ipynb
+colab_train_part2.ipynb
+colab_train_part3.ipynb
+colab_train_part4.ipynb
+```
+
+## Generated Outputs
+
+Experiment outputs are not required to be committed. The scripts write run artifacts under `outputs/` by default, including:
+
+```text
+outputs/part2_lr_sweep_v2/
+outputs/part2_v2/
+outputs/part3_mup_lr_sweep/
+outputs/part3_mup/
+outputs/part3_analysis/
+outputs/part4_best/
+outputs/part4_generation_temperature_groups/
+outputs/part4_generation_temperature_groups_eval/
+```
+
+In Colab, the same artifacts can be synced to Google Drive through the `drive_output_dir` values in the YAML configs.

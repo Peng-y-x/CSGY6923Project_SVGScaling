@@ -21,3 +21,5 @@ svg_scaling_report.docx
 .gitignore
 scripts/build_report_docx.py
 report
+svg_scaling_report.pdf
+svg_scaling_report_with_scaling_curve.docx
